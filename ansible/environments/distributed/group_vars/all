@@ -1,0 +1,61 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+environment_type: "distributed"
+
+openwhisk_tmp_dir: "{{ lookup('env', 'OPENWHISK_TMP_DIR')|default('/tmp' if ansible_distribution == 'MacOSX' else '/var/tmp', true) }}"
+config_root_dir: "{{ openwhisk_tmp_dir }}/wskconf"
+whisk_logs_dir: "{{ openwhisk_tmp_dir }}/wsklogs"
+coverage_enabled: "{{ lookup('env', 'GRADLE_COVERAGE') | default('false', true) | bool}}"
+coverage_logs_dir: "{{ openwhisk_tmp_dir }}/wskcov"
+docker_registry: ""
+docker_dns: ""
+runtimes_bypass_pull_for_local_images: true
+invoker_use_runc: "{{ ansible_distribution != 'MacOSX' }}"
+
+db_prefix: whisk_{{ environment_type }}_
+
+# API GW connection configuration
+apigw_auth_user: ""
+apigw_auth_pwd: ""
+apigw_host_v2: "http://{{ groups['apigateway']|first }}:{{apigateway.port.api}}/v2"
+
+invoker_allow_multiple_instances: false
+
+# Kafka
+# kafka_heap: '5g'
+env_hosts_dir: "{{ playbook_dir }}/environments/{{ environment_type }}"
+
+container_pool_akka_client: true
+runtimes_enable_concurrency: false
+
+# Controller
+# controller_heap: '5g'
+controller_managed_fraction: 1.0
+controller_blackbox_fraction: 1.0
+controller_loadbalancer_spi: "org.apache.openwhisk.core.loadBalancer.ShardingContainerPoolBalancer"
+
+# Invoker
+# invoker_heap: '5g'
+# invoker_user_memory: '240g'
+invoker_user_memory: '10g'
+
+# Limits
+# limit_invocations_per_minute: 10000
+# limit_invocations_concurrent: 10000
+# limit_fires_per_minute: 10000
+# limit_sequence_max_length: 10000

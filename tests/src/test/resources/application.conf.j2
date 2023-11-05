@@ -1,0 +1,149 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more contributor
+# license agreements; and to You under the Apache License, Version 2.0.
+
+whisk.spi {
+  SimpleSpi = org.apache.openwhisk.spi.SimpleSpiImpl
+  MissingSpi = org.apache.openwhisk.spi.MissingImpl
+  MissingModule = missing.module
+}
+
+# Blocking requests fall back to non-blocking after ~60s
+akka.http.client.idle-timeout = 90 s
+akka.http.host-connection-pool.idle-timeout = 90 s
+akka.http.host-connection-pool.client.idle-timeout = 90 s
+
+# Avoid system exit for test runs
+akka.jvm-exit-on-fatal-error = off
+
+whisk {
+    feature-flags {
+      require-api-key-annotation = {{ whisk.feature_flags.require_api_key_annotation | default(true) }}
+      require-response-payload = {{ whisk.feature_flags.require_response_payload | default(true) }}
+    }
+    # kafka related configuration
+    kafka {
+        replication-factor = 1
+        topics {
+            KafkaConnectorTestTopic {
+                segment-bytes   =  536870912
+                retention-bytes = 1073741824
+                retention-ms    = 3600000
+            }
+            prefix = "{{ kafka.topicsPrefix }}"
+            user-event {
+                prefix = "{{ kafka.topicsUserEventPrefix }}"
+            }
+        }
+        common {
+          security-protocol: {{ kafka.protocol }}
+          ssl-truststore-location: "{{ openwhisk_home }}/ansible/roles/kafka/files/{{ kafka.ssl.keystore.name }}"
+          ssl-truststore-password: "{{ kafka.ssl.keystore.password }}"
+          ssl-keystore-location: "{{ openwhisk_home }}/ansible/roles/kafka/files/{{ kafka.ssl.keystore.name }}"
+          ssl-keystore-password: "{{ kafka.ssl.keystore.password }}"
+        }
+        consumer {
+          max-poll-interval-ms: 10000
+        }
+    }
+
+    couchdb {
+        protocol = "{{ db.protocol }}"
+        host     = "{{ db.host }}"
+        port     = "{{ db.port }}"
+        username = "{{ db.credentials.admin.user }}"
+        password = "{{ db.credentials.admin.pass }}"
+        provider = "{{ db.provider }}"
+        databases {
+          WhiskAuth       = "{{ db.whisk.auth }}"
+          WhiskEntity     = "{{ db.whisk.actions }}"
+          WhiskActivation = "{{ db.whisk.activations }}"
+        }
+    }
+
+    cosmosdb {
+        endpoint   = ${?COSMOSDB_ENDPOINT}
+        key        = ${?COSMOSDB_KEY}
+        db         = ${?COSMOSDB_NAME}
+        throughput = 400
+    }
+
+    controller {
+      protocol = {{ controller.protocol }}
+      https {
+        keystore-flavor = "{{ controller.ssl.storeFlavor }}"
+        keystore-path = "{{ openwhisk_home }}/ansible/roles/controller/files/{{ controller.ssl.keystore.name }}"
+        keystore-password = "{{ controller.ssl.keystore.password }}"
+        client-auth = "{{ controller.ssl.clientAuth }}"
+      }
+    }
+    invoker {
+      protocol = {{ invoker.protocol }}
+      https {
+        keystore-flavor = "{{ invoker.ssl.storeFlavor }}"
+        keystore-path = "{{ openwhisk_home }}/ansible/roles/invoker/files/{{ invoker.ssl.keystore.name }}"
+        keystore-password = "{{ invoker.ssl.keystore.password }}"
+        client-auth = "{{ invoker.ssl.clientAuth }}"
+      }
+    }
+    user-events {
+        enabled = {{ user_events }}
+    }
+
+    container-factory {
+        runtimes-registry {
+            url = "{{ runtimes_registry | default('') }}"
+        }
+        user-images-registry {
+            url = "{{ user_images_registry | default('') }}"
+        }
+    }
+
+    parameter-storage {
+        current = "off"
+    }
+
+    elasticsearch {
+        docker-image = "{{ elasticsearch.docker_image | default('docker.elastic.co/elasticsearch/elasticsearch:' ~ elasticsearch.version ) }}"
+    }
+
+    helm.release = "release"
+    runtime.delete.timeout = "30 seconds"
+
+    duration-checker {
+        time-window = "{{ durationChecker.timeWindow }}"
+    }
+
+    activation-store {
+        elasticsearch {
+            protocol      = "{{ db.elasticsearch.protocol }}"
+            hosts         = "{{ elasticsearch_connect_string }}"
+            index-pattern = "{{ db.elasticsearch.index_pattern }}"
+            username      = "{{ db.elasticsearch.auth.admin.username }}"
+            password      = "{{ db.elasticsearch.auth.admin.password }}"
+        }
+    }
+
+    etcd {
+        hosts = "{{ etcd_connect_string }}"
+        lease {
+            timeout = "{{ etcd.lease.timeout }}"
+        }
+        pool {
+            threads = "{{ etcd.pool_threads }}"
+        }
+    }
+
+    scheduler {
+        protocol = "{{ scheduler.protocol }}"
+    }
+
+}
+
+#test-only overrides so that tests can override defaults in application.conf (todo: move all defaults to reference.conf)
+test {
+  whisk {
+    concurrency-limit {
+      max = 200
+    }
+  }
+}

@@ -1,0 +1,140 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath "cz.alenkacz:gradle-scalafmt:${gradle.scalafmt.version}"
+    }
+}
+
+plugins {
+    id "com.gradle.build-scan" version "2.3"
+    id "org.scoverage" version "4.0.1" apply false
+}
+
+
+buildScan {
+    termsOfServiceUrl = 'https://gradle.com/terms-of-service'
+    termsOfServiceAgree = 'yes'
+    publishAlwaysIf(System.getenv('CI') != null)
+}
+
+subprojects {
+    apply plugin: 'scalafmt'
+    scalafmt.configFilePath = gradle.scalafmt.config
+
+    group 'org.apache.openwhisk'
+    version '1.0.0-SNAPSHOT'
+
+    pluginManager.withPlugin('scala') {
+        // Constraint all transitive akka-* dependencies to the one we want to use to avoid issues.
+        // List generated via
+        // ./gradlew :test:dependencies | grep -o 'akka-.*_' | cut -c 6- | rev | cut -c 2- | rev | sort -u
+        def cons = project.getDependencies().getConstraints()
+        def akka = ['akka-actor', 'akka-cluster', 'akka-cluster-metrics', 'akka-cluster-tools', 'akka-coordination',
+                    'akka-discovery', 'akka-distributed-data', 'akka-protobuf', 'akka-remote', 'akka-slf4j',
+                    'akka-stream', 'akka-stream-testkit', 'akka-testkit']
+        def akkaHttp = ['akka-http', 'akka-http-core', 'akka-http-spray-json', 'akka-http-testkit', 'akka-http-xml',
+                        'akka-parsing', 'akka-http2-support']
+
+        akka.forEach {
+            cons.add('compile', "com.typesafe.akka:${it}_${gradle.scala.depVersion}:${gradle.akka.version}")
+        }
+        akkaHttp.forEach {
+            cons.add('compile', "com.typesafe.akka:${it}_${gradle.scala.depVersion}:${gradle.akka_http.version}")
+        }
+    }
+
+    afterEvaluate {
+        if (project.plugins.hasPlugin('scala')) {
+            repositories {
+                mavenCentral()
+            }
+
+            tasks.withType(ScalaCompile) {
+                scalaCompileOptions.additionalParameters = gradle.scala.compileFlags
+                scalaCompileOptions.forkOptions.jvmArgs = ["-Xss2m"]
+            }
+
+            if (project.plugins.hasPlugin('application')) {
+                startScripts {
+                    doLast {
+                        unixScript.text = configureUnixClasspath(unixScript)
+                    }
+                }
+            }
+        }
+
+        if (project.plugins.hasPlugin('maven')) {
+            task sourcesJar(type: Jar, dependsOn: classes) {
+                classifier = 'sources'
+                from sourceSets.main.allSource
+            }
+
+            task testSourcesJar(type: Jar, dependsOn: testClasses) {
+                classifier = 'test-sources'
+                from sourceSets.test.allSource
+                exclude("logback-test.xml")
+            }
+
+            task testClassesJar(type: Jar, dependsOn: testClasses) {
+                classifier = 'tests'
+                from sourceSets.test.output
+            }
+
+            artifacts {
+                archives sourcesJar
+                archives testSourcesJar
+                archives testClassesJar
+            }
+        }
+
+        if (project.plugins.hasPlugin('application')) {
+            //Ensure that dist archive name does not contain version
+            distTar {
+                archiveName = "${project.name}.tar"
+            }
+
+            //Avoid generating the zip files from maven installations
+            distZip {
+                enabled false
+            }
+
+            configurations.archives.artifacts.removeAll {it.file =~ 'zip'}
+        }
+    }
+}
+
+def configureUnixClasspath(File script) {
+    script
+        .readLines()
+        .collect { line ->
+            // Looking for the line that starts with CLASSPATH=
+            line = line.replaceAll(~/^CLASSPATH=.*$/) { original ->
+
+                // Get original line and append it
+                // with the configuration directory.
+                original += ':$APP_HOME/ext-lib/*:$APP_HOME/config'
+                //Ensure classes comes first. Used to refer to instrumented classes for code coverage
+                original = original.replace('CLASSPATH=', 'CLASSPATH=$APP_HOME/classes:')
+            }
+        }
+        .join('\n')
+}

@@ -1,0 +1,87 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+---
+# Tasks for handling CLI customization and publishing
+#
+# Note:  The configuration directory is actually located on the local machine;
+#        this script is run under the local host, usually 172.17.0.1 (docker local)
+
+- name: "Ensure nginx directory for cli exists"
+  file:
+    path: "{{ openwhisk_cli.nginxdir.name }}"
+    state: directory
+  become: "{{ openwhisk_cli.nginxdir.become }}"
+
+- name: "Ensure temporary directory exists"
+  file:
+    path: "{{ nginx.confdir }}/cli_temp"
+    state: directory
+
+- name: "Download release archive to build directory ..."
+  get_url:
+    url: "{{ openwhisk_cli.remote.location }}/{{ openwhisk_cli.archive_name}}-{{ openwhisk_cli_tag }}-all.tgz"
+    dest: "{{ nginx.confdir }}/cli_temp/{{ openwhisk_cli.archive_name }}.tgz"
+    headers: "{{ openwhisk_cli.remote.headers | default('') }}"
+  when: openwhisk_cli.installation_mode == "remote"
+
+- name: "... or Copy release archive to build directory"
+  copy:
+    src: "{{ openwhisk_cli_home }}/release/{{ openwhisk_cli.archive_name}}-{{ openwhisk_cli_tag }}-all.tgz"
+    dest: "{{ nginx.confdir }}/cli_temp/{{ openwhisk_cli.archive_name }}.tgz"
+  when: openwhisk_cli.installation_mode == "local"
+
+# Unarchiving here may fail for a local Mac development environment with an error stating "GNU tar required." To fix the
+# problem run "brew install gnu-tar".
+- name: "Expand the archive into the build directory"
+  unarchive:
+    src: "{{ nginx.confdir }}/cli_temp/{{ openwhisk_cli.archive_name }}.tgz"
+    dest: "{{ openwhisk_cli.nginxdir.name }}"
+    remote_src: yes
+
+- name: "Delete temp directory"
+  file:
+    path: "{{ nginx.confdir }}/cli_temp"
+    state: absent
+    force: yes
+
+- name: "Generate a list of individual tarballs to expand"
+  find:
+      paths: "{{ openwhisk_cli.nginxdir.name }}"
+      patterns: '*.tgz'
+      recurse: true
+  register: individual_tarballs
+
+- name: "Unarchive the individual tarballs"
+  unarchive:
+    src: "{{ item.path }}"
+    dest: "{{ item.path | dirname }}"
+    remote_src: yes
+  with_items: "{{ individual_tarballs.files }}"
+
+- name: "Generate a list of individual zipfiles to expand"
+  find:
+      paths: "{{ openwhisk_cli.nginxdir.name }}"
+      patterns: '*.zip'
+      recurse: true
+  register: individual_zipfiles
+
+- name: "Unarchive the individual zipfiles into binaries"
+  unarchive:
+    src: "{{ item.path }}"
+    dest: "{{ item.path | dirname }}"
+    remote_src: yes
+  with_items: "{{ individual_zipfiles.files }}"

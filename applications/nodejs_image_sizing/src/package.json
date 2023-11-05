@@ -1,0 +1,12 @@
+{
+  "main": "index.js",
+  "name": "",
+  "version": "1.0.0",
+  "description": "",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "jimp": "^0.4.0",
+    "node-zip": "^1.1.1"
+  }
+}

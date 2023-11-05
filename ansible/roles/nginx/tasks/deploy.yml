@@ -1,0 +1,104 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+---
+# This role starts a nginx component
+
+- name: ensure nginx config directory exists
+  file:
+    path: "{{ nginx.confdir }}"
+    state: directory
+  become: "{{ nginx.dir.become }}"
+
+- name: copy template from local to remote in nginx config directory
+  template:
+    src: nginx.conf.j2
+    dest: "{{ nginx.confdir }}/nginx.conf"
+
+- name: copy cert files from local to remote in nginx config directory
+  copy:
+    src: "{{ nginx.ssl.path }}/{{ item }}"
+    dest: "{{ nginx.confdir }}"
+  with_items:
+        - "{{ nginx.ssl.cert }}"
+        - "{{ nginx.ssl.key }}"
+        - "{{ nginx.ssl.client_ca_cert }}"
+
+- name: copy password files for cert from local to remote in nginx config directory
+  copy:
+    src: "{{ nginx.ssl.path }}/{{ nginx.ssl.password_file }}"
+    dest: "{{ nginx.confdir }}"
+  when: nginx.ssl.password_file
+
+- name: copy controller cert for authentication
+  copy:
+    src: "{{ openwhisk_home }}/ansible/roles/controller/files/{{ item }}"
+    dest: "{{ nginx.confdir }}"
+  with_items:
+        - "{{ controller.ssl.cert }}"
+        - "{{ controller.ssl.key }}"
+  when: controller.protocol == 'https'
+
+- name: ensure nginx log directory is created with permissions
+  file:
+    path: "{{ whisk_logs_dir }}/nginx"
+    state: directory
+    mode: 0777
+  become: "{{ logs.dir.become }}"
+
+- name: "pull the nginx:{{ nginx.version }} image"
+  shell: "docker pull nginx:{{ nginx.version }}"
+  register: result
+  until: (result.rc == 0)
+  retries: "{{ docker.pull.retries }}"
+  delay: "{{ docker.pull.delay }}"
+
+- name: ensure html directory exists
+  stat:
+    path: "{{ nginx.htmldir }}"
+  register: nginx_html_dir_exists
+  when: nginx.htmldir
+
+- name: check if html directory exists
+  fail:
+    msg: html directory does not exist '{{ nginx.htmldir }}'
+  when: nginx.htmldir and not (nginx_html_dir_exists.stat.exists and nginx_html_dir_exists.stat.isdir)
+
+- name: configuration volumes to mount
+  set_fact:
+    volumes:
+      - "{{ whisk_logs_dir }}/nginx:/logs"
+      - "{{ nginx.confdir }}:/etc/nginx"
+
+- name: "optional html volume to mount"
+  set_fact:
+    volumes: "{{ volumes }} + [ '{{ nginx.htmldir }}:/usr/share/nginx/html' ]"
+  when: nginx.htmldir
+
+- name: (re)start nginx
+  docker_container:
+    name: nginx
+    image: nginx:{{ nginx.version }}
+    state: started
+    recreate: true
+    restart_policy: "{{ docker.restart.policy }}"
+    hostname: "nginx"
+    volumes: "{{ volumes }}"
+    ports:
+      - "{{ nginx.port.http }}:80"
+      - "{{ nginx.port.https }}:443"
+    env:
+      TZ: "{{ docker.timezone }}"

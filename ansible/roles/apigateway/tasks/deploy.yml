@@ -1,0 +1,46 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+---
+# This role will install apigateway
+
+- name: (re)start apigateway
+  docker_container:
+    name: apigateway
+    image: "{{ apigateway.docker_image | default('openwhisk/apigateway:' ~ apigateway.version) }}"
+    state: started
+    recreate: true
+    restart_policy: "{{ docker.restart.policy }}"
+    hostname: apigateway
+    env:
+      "REDIS_HOST": "{{ groups['redis'] | first }}"
+      "REDIS_PORT": "{{ redis.port }}"
+      "REDIS_PASS": "{{ redis.password }}"
+      "PUBLIC_MANAGEDURL_HOST": "{{ ansible_host }}"
+      "PUBLIC_MANAGEDURL_PORT": "{{ apigateway.port.mgmt }}"
+      "TZ": "{{ docker.timezone }}"
+    ports:
+      - "{{ apigateway.port.mgmt }}:8080"
+      - "{{ apigateway.port.api }}:9000"
+    pull: "{{ apigateway_local_build is undefined }}"
+
+- name: wait until the API Gateway in this host is up and running
+  uri:
+    url: "http://{{ groups['apigateway'] | first }}:{{ apigateway.port.api }}/v1/apis"
+  register: result
+  until: result.status == 200
+  retries: 12
+  delay: 5

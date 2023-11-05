@@ -1,0 +1,19 @@
+#
+# Mount a directory to SSD
+#
+
+# Stop Docker service
+sudo service docker stop
+
+# Make new dir
+sudo mkdir /mnt/var
+
+# Copy current data to the new location
+sudo rsync -aqxP /var/* /mnt/var
+
+# Mount in /etc/fstab
+sudo echo "/mnt/var /var none bind 0 0" >> /etc/fstab
+sudo mount -a
+
+# Check new location
+sudo df -h /mnt/var

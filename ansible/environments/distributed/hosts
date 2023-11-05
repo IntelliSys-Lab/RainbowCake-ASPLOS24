@@ -1,0 +1,38 @@
+; the first parameter in a host is the inventory_hostname
+
+; used for local actions only
+ansible ansible_connection=local
+
+[edge]
+172.17.0.1          ansible_host=172.17.0.1
+
+[apigateway:children]
+edge
+
+[redis:children]
+edge
+
+[controllers]
+controller0         ansible_host=172.17.0.1
+
+[etcd:children]
+controllers
+
+[kafkas]
+kafka0              ansible_host=172.17.0.1
+
+[zookeepers:children]
+kafkas
+
+[db]
+172.17.0.1          ansible_host=172.17.0.1
+
+[elasticsearch:children]
+db
+
+[invokers]
+invoker0            ansible_host=172.17.0.1
+
+
+[all:vars]
+ansible_connection=local

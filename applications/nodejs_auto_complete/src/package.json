@@ -1,0 +1,12 @@
+{
+  "main": "index.js",
+  "name": "",
+  "version": "1.0.0",
+  "description": "",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "colors": "^1.1.2",
+    "tmp": "0.0.33"
+  }
+}

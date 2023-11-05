@@ -1,0 +1,12 @@
+{
+  "main": "index.js",
+  "name": "",
+  "version": "1.0.0",
+  "description": "",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "nano": "^9.0.3",
+    "follow-redirects": "^1.14.1"
+  }
+}

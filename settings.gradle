@@ -1,0 +1,70 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+include 'common:scala'
+
+include 'core:controller'
+include 'core:scheduler'
+include 'core:invoker'
+include 'core:cosmosdb:cache-invalidator'
+include 'core:standalone'
+include 'core:monitoring:user-events'
+
+include 'tests'
+include 'tests:performance:gatling_tests'
+
+include 'tools:actionProxy'
+include 'tools:ow-utils'
+include 'tools:dev'
+
+include 'tools:admin'
+
+rootProject.name = 'openwhisk'
+
+
+def scalaVersion = System.getenv().getOrDefault('OW_SCALA_VERSION', '2.12')
+
+if (scalaVersion == '2.12') {
+    println("Build using Scala 2.12")
+    gradle.ext.scala = [
+            version     : '2.12.10',
+            depVersion  : '2.12',
+            compileFlags: ['-feature', '-unchecked', '-deprecation', '-Xfatal-warnings', '-Ywarn-unused-import']
+    ]
+} else {
+    println("Build using Scala 2.13")
+    gradle.ext.scala = [
+            version     : '2.13.1',
+            depVersion  : '2.13',
+            // We can't use fatal warnings yet because there are deprecated things in 2.13 that are not fixable
+            // in 2.12.
+            compileFlags: ['-feature', '-unchecked', '-deprecation']
+    ]
+}
+
+gradle.ext.scalafmt = [
+    version: '1.5.0',
+    config: new File(rootProject.projectDir, '.scalafmt.conf')
+]
+
+gradle.ext.akka = [version : '2.6.12']
+gradle.ext.akka_kafka = [version : '2.0.2']
+gradle.ext.akka_http = [version : '10.2.4']
+gradle.ext.akka_management = [version : '1.0.5']
+
+gradle.ext.curator = [version : '4.0.0']
+gradle.ext.kube_client = [version: '4.4.2']

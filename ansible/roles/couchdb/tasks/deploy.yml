@@ -1,0 +1,186 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+---
+# This role will run a CouchDB server on the db group
+
+- name: set the coordinator to the first node
+  set_fact:
+    coordinator: "{{ groups['db'][0] }}"
+
+- name: "Set the volumes"
+  set_fact:
+    volumes: []
+
+- name: "Set the nodes"
+  set_fact:
+    couchdb_nodes: []
+
+- name: check if db credentials are valid for CouchDB
+  fail: msg="The db provider in your {{ hosts_dir }}/group_vars/all is {{ db.provider }}, it has to be CouchDB, pls double check"
+  when: db.provider != "CouchDB"
+
+- name: ensure directory for persisting db exists
+  stat:
+    path: "{{ db.persist_path }}"
+  register: db_persist_path_exists
+  when: db.persist_path
+
+- name: fail if path to persist db does not exist
+  fail:
+    msg: directory for persisting db does not exist '{{ db.persist_path }}'
+  when: db.persist_path and not (db_persist_path_exists.stat.exists and db_persist_path_exists.stat.isdir)
+
+- name: "mount directory for persisting dbs"
+  set_fact:
+    volumes: "{{ volumes }} + [ '{{ db.persist_path }}:/opt/couchdb/data' ]"
+  when: db.persist_path
+
+- include_tasks: gen_erl_cookie.yml
+  when: (db.instances|int >= 2)
+
+- name: "set the erlang cookie volume"
+  set_fact:
+    volumes: "{{ volumes }} + [ '{{ config_root_dir }}/erlang.cookie:/opt/couchdb/.erlang.cookie' ]"
+  when: (db.instances|int >= 2)
+
+- name: "(re)start CouchDB from '{{ couchdb_image }} ' "
+  vars:
+    couchdb_image: "{{ couchdb.docker_image | default('apache/couchdb:' ~ couchdb.version ) }}"
+  docker_container:
+    name: couchdb
+    image: "{{ couchdb_image }}"
+    state: started
+    recreate: true
+    restart_policy: "{{ docker.restart.policy }}"
+    volumes: "{{ volumes }}"
+    ports:
+      - "{{ db.port }}:5984"
+      - "4369:4369"
+      - "9100:9100"
+    env:
+      COUCHDB_USER: "{{ db.credentials.admin.user }}"
+      COUCHDB_PASSWORD: "{{ db.credentials.admin.pass }}"
+      NODENAME: "{{ ansible_host }}"
+      TZ: "{{ docker.timezone }}"
+    pull: "{{ couchdb.pull_couchdb | default(true) }}"
+
+- name: wait until CouchDB in this host is up and running
+  uri:
+    url: "{{ db.protocol }}://{{ ansible_host }}:{{ db.port }}/_utils/"
+  register: result
+  until: result.status == 200
+  retries: 12
+  delay: 5
+
+- name: check if '_users' database exists
+  uri:
+    url: "{{ db.protocol }}://{{ ansible_host }}:{{ db.port }}/_users"
+    method: HEAD
+    status_code: 200,404
+    user: "{{ db.credentials.admin.user }}"
+    password: "{{ db.credentials.admin.pass }}"
+    force_basic_auth: yes
+  register: create_users_db
+
+- name: create '_users' database for singleton mode if necessary
+  uri:
+    url: "{{ db.protocol }}://{{ ansible_host }}:{{ db.port }}/_users"
+    method: PUT
+    status_code: 201
+    user: "{{ db.credentials.admin.user }}"
+    password: "{{ db.credentials.admin.pass }}"
+    force_basic_auth: yes
+  when: (create_users_db.status == 404) and (inventory_hostname == coordinator) and (couchdb.version is version_compare('2.0','>='))
+
+- name: check whether couchdb is clustered
+  uri:
+    url: "{{ db.protocol }}://{{ ansible_host }}:{{ db.port }}/_cluster_setup"
+    method: GET
+    status_code: 200
+    user: "{{ db.credentials.admin.user }}"
+    password: "{{ db.credentials.admin.pass }}"
+    force_basic_auth: yes
+  register: cluster_state
+  run_once: true
+
+- name: check clustered nodes
+  uri:
+    url: "{{ db.protocol }}://{{ ansible_host }}:{{ db.port }}/_membership"
+    method: GET
+    status_code: 200
+    user: "{{ db.credentials.admin.user }}"
+    password: "{{ db.credentials.admin.pass }}"
+    force_basic_auth: yes
+  register: nodes_state
+  run_once: true
+
+- name: generates couchdb node name
+  set_fact:
+    couchdb_nodes: "{{ couchdb_nodes }} + [ 'couchdb@{{ item }}' ]"
+  with_items: "{{ groups['db'] }}"
+  run_once: true
+
+- name: check if there is a new node
+  set_fact:
+    require_clustering: true
+  when: item not in nodes_state.json.cluster_nodes
+  with_items: "{{ couchdb_nodes }}"
+  run_once: true
+
+- name: set node name
+  set_fact:
+    node_name: "couchdb@{{ ansible_host }}"
+
+- name: enable the cluster setup mode
+  uri:
+    url: "{{ db.protocol }}://{{ ansible_host }}:{{ db.port }}/_cluster_setup"
+    method: POST
+    body: >
+        {"action": "enable_cluster", "bind_address":"0.0.0.0", "username": "{{ db.credentials.admin.user }}", "password":"{{ db.credentials.admin.pass }}", "port": {{ db.port }}, "node_count": "{{ groups['db'] | length }}", "remote_node": "{{ ansible_host }}", "remote_current_user": "{{ db.credentials.admin.user }}", "remote_current_password": "{{ db.credentials.admin.pass }}"}
+    body_format: json
+    status_code: 201
+    user: "{{ db.credentials.admin.user }}"
+    password: "{{ db.credentials.admin.pass }}"
+    force_basic_auth: yes
+  when: (inventory_hostname == coordinator) and (db.instances|int >= 2) and require_clustering is defined
+
+- name: add remote nodes to the cluster
+  uri:
+    url: "{{ db.protocol }}://{{ coordinator }}:{{ db.port }}/_cluster_setup"
+    method: POST
+    body: >
+        {"action": "add_node", "host":"{{ ansible_host }}", "port": {{ db.port }}, "username": "{{ db.credentials.admin.user }}", "password":"{{ db.credentials.admin.pass }}"}
+    body_format: json
+    status_code: 201
+    user: "{{ db.credentials.admin.user }}"
+    password: "{{ db.credentials.admin.pass }}"
+    force_basic_auth: yes
+  when: (inventory_hostname != coordinator) and (db.instances|int >= 2)  and require_clustering is defined and node_name not in nodes_state.json.cluster_nodes
+
+- name: finish the cluster setup mode
+  uri:
+    url: "{{ db.protocol }}://{{ ansible_host }}:{{ db.port }}/_cluster_setup"
+    method: POST
+    body: >
+        {"action": "finish_cluster"}
+    body_format: json
+    status_code: 201
+    user: "{{ db.credentials.admin.user }}"
+    password: "{{ db.credentials.admin.pass }}"
+    force_basic_auth: yes
+  when: (inventory_hostname == coordinator) and (db.instances|int >= 2) and (cluster_state.json.state != "cluster_finished")
+

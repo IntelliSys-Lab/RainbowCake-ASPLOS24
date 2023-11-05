@@ -1,0 +1,11 @@
+{
+  "main": "index.js",
+  "name": "",
+  "version": "1.0.0",
+  "description": "",
+  "author": "",
+  "license": "",
+  "dependencies": {
+    "tesseractocr": "^2.0.3"
+  }
+}

@@ -1,0 +1,50 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+config_root_dir: /Users/Shared/wskconf
+whisk_logs_dir: /Users/Shared/wsklogs
+docker_registry: ""
+docker_dns: ""
+runtimes_bypass_pull_for_local_images: true
+
+environment_type: "docker-machine"
+
+env_hosts_dir: "{{ playbook_dir }}/environments/docker-machine"
+
+# The whisk_api_localhost_name is used to configure nginx to permit vanity URLs for web actions.
+# It is also used for the SSL certificate generation. For a local deployment, this is typically
+# a hostname that is resolved on the client, via /etc/hosts for example.
+whisk_api_localhost_name: "openwhisk"
+
+# Hardcoded for docker-machine since db init runs on host not inside VM
+db_prefix: whisk_dockermachine_
+
+# API GW connection configuration
+apigw_auth_user: ""
+apigw_auth_pwd: ""
+apigw_host_v2: "http://{{ groups['apigateway']|first }}:{{apigateway.port.api}}/v2"
+
+invoker_allow_multiple_instances: true
+
+# Set kafka configuration
+kafka_heap: '512m'
+kafka_topics_completed_retentionBytes: 104857600
+kafka_topics_completed_retentionMS: 300000
+kafka_topics_health_retentionBytes: 104857600
+kafka_topics_health_retentionMS: 300000
+kafka_topics_invoker_retentionBytes: 104857600
+kafka_topics_invoker_retentionMS: 300000
