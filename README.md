@@ -19,7 +19,7 @@
 
 # RainbowCake-ASPLOS24
 
-
+[![DOI](https://zenodo.org/badge/696946314.svg)](https://zenodo.org/doi/10.5281/zenodo.10056676)
 
 <img src="https://github.com/IntelliSys-Lab/RainbowCake-ASPLOS24/blob/master/logo.png" width="100">
 
